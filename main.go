@@ -13,6 +13,7 @@ import (
 	"github.com/inkyblackness/res/audio"
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/chunk/dos"
+	"github.com/inkyblackness/res/movi"
 	"github.com/inkyblackness/res/serial"
 
 	"github.com/inkyblackness/chunkie/conv/wav"
@@ -90,9 +91,13 @@ func main() {
 
 func export(holder chunk.BlockHolder, blockID uint16, outFileName string, raw bool) {
 	blockData := holder.BlockData(blockID)
+	contentType := holder.ContentType()
 
-	if !raw && holder.ContentType() == res.Sound {
+	if !raw && contentType == res.Sound {
 		soundData, _ := audio.DecodeSoundChunk(blockData)
+		wav.ExportToWav(outFileName+".wav", soundData)
+	} else if contentType == res.Media {
+		soundData, _ := movi.ExtractAudio(blockData)
 		wav.ExportToWav(outFileName+".wav", soundData)
 	} else {
 		ioutil.WriteFile(outFileName+".bin", blockData, os.FileMode(0644))
@@ -139,7 +144,11 @@ func importFile(sourceFile string, dataType res.DataTypeID) (data []byte) {
 	case ".wav":
 		{
 			soundData := wav.ImportFromWav(sourceFile)
-			data = audio.EncodeSoundChunk(soundData)
+			if dataType == res.Sound {
+				data = audio.EncodeSoundChunk(soundData)
+			} else if dataType == res.Media {
+				data = movi.ContainSoundData(soundData)
+			}
 		}
 	default:
 		{
