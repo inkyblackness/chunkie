@@ -19,8 +19,8 @@ import (
 	"github.com/inkyblackness/res/movi"
 	"github.com/inkyblackness/res/serial"
 
-	"github.com/inkyblackness/chunkie/conv/gif"
-	"github.com/inkyblackness/chunkie/conv/wav"
+	"github.com/inkyblackness/chunkie/convert"
+	"github.com/inkyblackness/chunkie/convert/wav"
 )
 
 const (
@@ -82,7 +82,7 @@ func main() {
 
 		holder := provider.Provide(res.ResourceID(chunkID))
 		outFileName := fmt.Sprintf("%04X_%03d", int(chunkID), blockID)
-		export(holder, uint16(blockID), path.Join(folder, outFileName), raw, paletteFile)
+		exportFile(holder, uint16(blockID), path.Join(folder, outFileName), raw, paletteFile)
 	} else if arguments["import"].(bool) {
 		resourceFile := arguments["<resource-file>"].(string)
 		chunkID, _ := strconv.ParseUint(arguments["<chunk-id>"].(string), 0, 16)
@@ -99,7 +99,7 @@ func main() {
 	}
 }
 
-func export(holder chunk.BlockHolder, blockID uint16, outFileName string, raw bool, paletteFile string) {
+func exportFile(holder chunk.BlockHolder, blockID uint16, outFileName string, raw bool, paletteFile string) {
 	blockData := holder.BlockData(blockID)
 	contentType := holder.ContentType()
 	exportRaw := raw
@@ -113,7 +113,7 @@ func export(holder chunk.BlockHolder, blockID uint16, outFileName string, raw bo
 			wav.ExportToWav(outFileName+".wav", soundData)
 		} else if contentType == res.Bitmap {
 			palette := loadPalette(paletteFile)
-			exportRaw = !gif.ExportToGif(outFileName+".gif", blockData, palette)
+			exportRaw = !convert.ToPng(outFileName+".png", blockData, palette)
 		} else {
 			exportRaw = true
 		}
@@ -133,7 +133,7 @@ func loadPalette(fileName string) (pal color.Palette) {
 		for _, id := range ids {
 			blockHolder := provider.Provide(id)
 
-			if blockHolder.ContentType() == res.Data && pal == nil {
+			if blockHolder.ContentType() == res.Palette && pal == nil {
 				pal, _ = image.LoadPalette(bytes.NewReader(blockHolder.BlockData(0)))
 			}
 		}
@@ -185,6 +185,12 @@ func importFile(sourceFile string, dataType res.DataTypeID) (data []byte) {
 				data = audio.EncodeSoundChunk(soundData)
 			} else if dataType == res.Media {
 				data = movi.ContainSoundData(soundData)
+			}
+		}
+	case ".png":
+		{
+			if dataType == res.Bitmap {
+				data = convert.FromPng(sourceFile, false)
 			}
 		}
 	default:

@@ -28,8 +28,10 @@ Options:
 
 The base file name of files is ```XXXX_YYY.ZZZ```. XXXX is the hexadecimal presentation of the chunk number. YYY is decimal for the block number. ZZZ is the type of the file, defaulting to ```bin```.
 
-For exporting, audio chunks are saved as .wav files. Specifying --raw will export the chunk in its raw format.
-Files are imported raw as well, unless a conversion is known. This is the case for .wav files when writing sound chunks.
+For exporting, basic formats will be exported as known file types. Specifying --raw will export the chunk in its raw format.
+Files are imported raw as well, unless a conversion is known.
+
+The following formats are supported for import and export: .wav for audio, .png for images
 
 ## License
 
