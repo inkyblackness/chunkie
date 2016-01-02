@@ -114,6 +114,9 @@ func exportFile(holder chunk.BlockHolder, blockID uint16, outFileName string, ra
 		} else if contentType == res.Bitmap {
 			palette := loadPalette(paletteFile)
 			exportRaw = !convert.ToPng(outFileName+".png", blockData, palette)
+		} else if contentType == res.Geometry {
+			palette := loadPalette(paletteFile)
+			exportRaw = !convert.ToWavefrontObj(outFileName, blockData, palette)
 		} else {
 			exportRaw = true
 		}
