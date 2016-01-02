@@ -19,6 +19,7 @@ type wavefrontWriter struct {
 	palette color.Palette
 
 	vtCounter int
+	vnCounter int
 
 	usedMaterials map[string]bool
 	lastMaterial  string
@@ -30,8 +31,9 @@ func (writer *wavefrontWriter) Nodes(anchor geometry.NodeAnchor) {
 }
 
 func (writer *wavefrontWriter) Faces(anchor geometry.FaceAnchor) {
-	// fmt.Printf("Face normal: %f %f %f\n", anchor.Normal().X(), anchor.Normal().Y(), anchor.Normal().Z())
-	// fmt.Printf("Face refere: %f %f %f\n", anchor.Reference().X(), anchor.Reference().Y(), anchor.Reference().Z())
+	writer.vnCounter++
+	fmt.Fprintf(writer.objFile, "vn %f %f %f\n", -anchor.Normal().X(), -anchor.Normal().Y(), -anchor.Normal().Z())
+
 	anchor.WalkFaces(writer)
 }
 
@@ -41,9 +43,10 @@ func (writer *wavefrontWriter) defineMaterial(name string) {
 }
 
 func (writer *wavefrontWriter) defineMaterialColor(color geometry.ColorIndex) {
+	limit := float32(0xFFFF)
 	r, g, b, _ := writer.palette[int(color)].RGBA()
-	fmt.Fprintf(writer.mtlFile, "Ka %f %f %f\n", float32(r)/256.0, float32(g)/256.0, float32(b)/256.0)
-	fmt.Fprintf(writer.mtlFile, "Kd %f %f %f\n", float32(r)/256.0, float32(g)/256.0, float32(b)/256.0)
+	fmt.Fprintf(writer.mtlFile, "Ka %f %f %f\n", float32(r)/limit, float32(g)/limit, float32(b)/limit)
+	fmt.Fprintf(writer.mtlFile, "Kd %f %f %f\n", float32(r)/limit, float32(g)/limit, float32(b)/limit)
 }
 
 func (writer *wavefrontWriter) useMaterial(name string) {
@@ -105,20 +108,23 @@ func (writer *wavefrontWriter) ShadeColored(face geometry.ShadeColoredFace) {
 func (writer *wavefrontWriter) TextureMapped(face geometry.TextureMappedFace) {
 	writer.useTextureMaterial(face.TextureID())
 
-	for _, coord := range face.TextureCoordinates() {
-		fmt.Fprintf(writer.objFile, "vt %f %f\n", coord.U(), coord.V())
+	vertUV := make(map[int]int)
+
+	for index, coord := range face.TextureCoordinates() {
+		fmt.Fprintf(writer.objFile, "vt %f %f\n", 1.0-coord.U(), 1.0-coord.V())
+		vertUV[coord.Vertex()] = index
 	}
 
 	fmt.Fprintf(writer.objFile, "f")
-	for index, vertexIndex := range face.Vertices() {
-		fmt.Fprintf(writer.objFile, " %d/%d", vertexIndex+1, writer.vtCounter+index+1)
+	for _, vertexIndex := range face.Vertices() {
+		fmt.Fprintf(writer.objFile, " %d/%d/%d", vertexIndex+1, writer.vtCounter+vertUV[vertexIndex]+1, writer.vnCounter)
 	}
 	fmt.Fprintf(writer.objFile, "\n")
 	writer.vtCounter += len(face.TextureCoordinates())
 }
 
 // ToWavefrontObj extracts a geometry model from given block data and saves
-// the 3D model as a Wavefront OBJ file
+// the 3D model as a Wavefront OBJ file with accompanying material file.
 func ToWavefrontObj(fileName string, blockData []byte, palette color.Palette) (result bool) {
 	model, err := command.LoadModel(bytes.NewReader(blockData))
 
@@ -137,7 +143,7 @@ func ToWavefrontObj(fileName string, blockData []byte, palette color.Palette) (r
 			vertexCount := model.VertexCount()
 			for i := 0; i < vertexCount; i++ {
 				position := model.Vertex(i).Position()
-				fmt.Fprintf(objFile, "v %f %f %f\n", position.X(), -position.Y(), position.Z())
+				fmt.Fprintf(objFile, "v %f %f %f\n", -position.X(), -position.Y(), -position.Z())
 			}
 
 			writer := &wavefrontWriter{

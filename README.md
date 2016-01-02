@@ -18,7 +18,7 @@ Options:
   <chunk-id>            The chunk identifier. Defaults to decimal, use "0x" as prefix for hexadecimal.
   --block=<block-id>    The block identifier. Defaults to decimal, use "0x" as prefix for hexadecimal. [default: 0]
 	--raw                 With this flag, the chunk will be exported without conversion to a common file format.
-	--pal=<palette-file>  For handling bitmaps, use this palette file to write color information
+	--pal=<palette-file>  For handling bitmaps & models, use this palette file to write color information
 	--data-type=<id>      The type of the chunk to write.
   <folder>              The path of the folder to use. [default: .]
 	<source-file>         The source file to import.
@@ -32,6 +32,7 @@ For exporting, basic formats will be exported as known file types. Specifying --
 Files are imported raw as well, unless a conversion is known.
 
 The following formats are supported for import and export: .wav for audio, .png for images
+The following format is supported for export only: .obj (Wavefront) for geometry
 
 ## License
 
