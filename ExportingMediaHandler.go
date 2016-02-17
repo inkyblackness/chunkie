@@ -27,10 +27,11 @@ type subtitleEntry struct {
 }
 
 type exportingMediaHandler struct {
-	container    movi.Container
-	fileBaseName string
+	mediaDuration float32
+	fileBaseName  string
 
-	audio []byte
+	sampleRate float32
+	audio      []byte
 
 	subtitles map[movi.SubtitleControl]*subtitleEntry
 
@@ -41,22 +42,23 @@ type exportingMediaHandler struct {
 	framesPerSecond float32
 }
 
-func newExportingMediaHandler(container movi.Container, fileBaseName string, framesPerSecond float32) *exportingMediaHandler {
+func newExportingMediaHandler(fileBaseName string, mediaDuration float32, framesPerSecond float32, sampleRate float32) *exportingMediaHandler {
 	return &exportingMediaHandler{
-		container:       container,
+		mediaDuration:   mediaDuration,
 		fileBaseName:    fileBaseName,
 		subtitles:       make(map[movi.SubtitleControl]*subtitleEntry),
-		framesPerSecond: framesPerSecond}
+		framesPerSecond: framesPerSecond,
+		sampleRate:      sampleRate}
 }
 
 func (handler *exportingMediaHandler) finish() {
-	handler.writeLastFramesUntil(handler.container.MediaDuration())
+	handler.writeLastFramesUntil(handler.mediaDuration)
 	for _, entry := range handler.subtitles {
-		handler.finishSubtitle(entry, handler.container.MediaDuration())
+		handler.finishSubtitle(entry, handler.mediaDuration)
 		entry.file.Close()
 	}
 	if len(handler.audio) > 0 {
-		soundData := mem.NewL8SoundData(float32(handler.container.AudioSampleRate()), handler.audio)
+		soundData := mem.NewL8SoundData(handler.sampleRate, handler.audio)
 		wav.ExportToWav(handler.fileBaseName+".wav", soundData)
 	}
 }

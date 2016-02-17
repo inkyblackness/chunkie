@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	goImage "image"
 	"image/color"
 	"io/ioutil"
 	"os"
@@ -15,6 +17,8 @@ import (
 	"github.com/inkyblackness/res/audio"
 	"github.com/inkyblackness/res/chunk"
 	"github.com/inkyblackness/res/chunk/dos"
+	"github.com/inkyblackness/res/compress/rle"
+	"github.com/inkyblackness/res/data"
 	"github.com/inkyblackness/res/image"
 	"github.com/inkyblackness/res/movi"
 	"github.com/inkyblackness/res/serial"
@@ -84,7 +88,7 @@ func main() {
 
 		holder := provider.Provide(res.ResourceID(chunkID))
 		outFileName := fmt.Sprintf("%04X_%03d", int(chunkID), blockID)
-		exportFile(holder, uint16(blockID), path.Join(folder, outFileName), raw, paletteFile, float32(framesPerSecond))
+		exportFile(provider, holder, uint16(blockID), path.Join(folder, outFileName), raw, paletteFile, float32(framesPerSecond))
 	} else if arguments["import"].(bool) {
 		resourceFile := arguments["<resource-file>"].(string)
 		chunkID, _ := strconv.ParseUint(arguments["<chunk-id>"].(string), 0, 16)
@@ -101,7 +105,8 @@ func main() {
 	}
 }
 
-func exportFile(holder chunk.BlockHolder, blockID uint16, outFileName string, raw bool, paletteFile string, framesPerSecond float32) {
+func exportFile(provider chunk.Provider, holder chunk.BlockHolder, blockID uint16,
+	outFileName string, raw bool, paletteFile string, framesPerSecond float32) {
 	blockData := holder.BlockData(blockID)
 	contentType := holder.ContentType()
 	exportRaw := raw
@@ -118,6 +123,9 @@ func exportFile(holder chunk.BlockHolder, blockID uint16, outFileName string, ra
 		} else if contentType == res.Geometry {
 			palette := loadPalette(paletteFile)
 			exportRaw = !convert.ToWavefrontObj(outFileName, blockData, palette)
+		} else if contentType == res.VideoClip {
+			palette := loadPalette(paletteFile)
+			exportRaw = exportVideoClip(provider, blockData, outFileName, framesPerSecond, palette)
 		} else {
 			exportRaw = true
 		}
@@ -149,7 +157,7 @@ func exportMedia(blockData []byte, fileBaseName string, framesPerSecond float32)
 	container, err := movi.Read(bytes.NewReader(blockData))
 
 	if err == nil {
-		handler := newExportingMediaHandler(container, fileBaseName, framesPerSecond)
+		handler := newExportingMediaHandler(fileBaseName, container.MediaDuration(), framesPerSecond, float32(container.AudioSampleRate()))
 		dispatcher := movi.NewMediaDispatcher(container, handler)
 		more := true
 
@@ -162,6 +170,46 @@ func exportMedia(blockData []byte, fileBaseName string, framesPerSecond float32)
 	}
 
 	if err != nil {
+		failed = true
+	}
+	return
+}
+
+func exportVideoClip(provider chunk.Provider, blockData []byte, fileBaseName string, framesPerSecond float32, pal color.Palette) (failed bool) {
+	reader := bytes.NewReader(blockData)
+	sequence := data.DefaultVideoClipSequence((len(blockData) - data.VideoClipSequenceBaseSize) / data.VideoClipSequenceEntrySize)
+	var err error
+
+	serial.MapData(sequence, serial.NewDecoder(reader))
+	{
+		times := make([]float32, 0)
+		mediaDuration := float32(0.0)
+		for _, entry := range sequence.Entries {
+			frameTime := float32(entry.Unknown0003[1]) + float32(entry.Unknown0003[0])/256.0
+			for i := 0; i < int(entry.LastFrame-entry.FirstFrame)+1; i++ {
+				times = append(times, mediaDuration)
+				mediaDuration += frameTime
+			}
+		}
+
+		framesData := provider.Provide(sequence.FramesID)
+
+		imageRect := goImage.Rect(0, 0, int(sequence.Width), int(sequence.Height))
+		img := goImage.NewPaletted(imageRect, pal)
+		handler := newExportingMediaHandler(fileBaseName, mediaDuration, framesPerSecond, 0.0)
+		for frameId := uint16(0); frameId < framesData.BlockCount() && err == nil; frameId++ {
+			frameReader := bytes.NewReader(framesData.BlockData(frameId))
+			var header image.BitmapHeader
+
+			binary.Read(frameReader, binary.LittleEndian, &header)
+			err = rle.Decompress(frameReader, img.Pix)
+			handler.OnVideo(times[int(frameId)], img)
+		}
+		handler.finish()
+	}
+
+	if err != nil {
+		fmt.Printf("error exporting video clip: %v\n", err)
 		failed = true
 	}
 	return
