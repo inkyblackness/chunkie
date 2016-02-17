@@ -40,23 +40,24 @@ func usage() string {
 	return Title + `
 
 Usage:
-  chunkie export <resource-file> <chunk-id> [--block=<block-id>] [--raw] [--pal=<palette-file>] [--fps=<framerate>] [<folder>]
+  chunkie export <resource-file> <chunk-id> [--block=<block-id>] [--raw] [--pal=<palette-file>] [--pal-id=<palette-id>] [--fps=<framerate>] [<folder>]
   chunkie import <resource-file> <chunk-id> [--block=<block-id>] [--data-type=<id>] <source-file>
   chunkie -h | --help
   chunkie --version
 
 Options:
-  <resource-file>       The resource file to work on.
-  <chunk-id>            The chunk identifier. Defaults to decimal, use "0x" as prefix for hexadecimal.
-  --block=<block-id>    The block identifier. Defaults to decimal, use "0x" as prefix for hexadecimal. [default: 0]
-  --raw                 With this flag, the chunk will be exported without conversion to a common file format.
-  --pal=<palette-file>  For handling bitmaps & models, use this palette file to write color information
-  --fps=<framerate>     The frames per second to emulate when exporting movies. 0 names files after timestamp. [default: 0]
-  --data-type=<id>      The type of the chunk to write.
-  <folder>              The path of the folder to use. [default: .]
-  <source-file>         The source file to import.
-  -h --help             Show this screen.
-  --version             Show version.
+  <resource-file>        The resource file to work on.
+  <chunk-id>             The chunk identifier. Defaults to decimal, use "0x" as prefix for hexadecimal.
+  --block=<block-id>     The block identifier. Defaults to decimal, use "0x" as prefix for hexadecimal. [default: 0]
+  --raw                  With this flag, the chunk will be exported without conversion to a common file format.
+  --pal=<palette-file>   For handling bitmaps & models, use this palette file to write color information
+  --pal-id=<palette-id>  Optional palette chunk identifier. If not provided, uses first palette found in palette-file.
+  --fps=<framerate>      The frames per second to emulate when exporting movies. 0 names files after timestamp. [default: 0]
+  --data-type=<id>       The type of the chunk to write.
+  <folder>               The path of the folder to use. [default: .]
+  <source-file>          The source file to import.
+  -h --help              Show this screen.
+  --version              Show version.
 `
 }
 
@@ -74,12 +75,17 @@ func main() {
 		framesPerSecond, _ := strconv.ParseFloat(arguments["--fps"].(string), 32)
 		raw := arguments["--raw"].(bool)
 		palArgument := arguments["--pal"]
-		var paletteFile string
+		palIdArgument := arguments["--pal-id"]
+		var palette color.Palette
+		paletteId := uint64(0)
 		folderArgument := arguments["<folder>"]
 		folder := "."
 
+		if palIdArgument != nil {
+			paletteId, _ = strconv.ParseUint(palIdArgument.(string), 0, 16)
+		}
 		if palArgument != nil {
-			paletteFile = palArgument.(string)
+			palette = loadPalette(palArgument.(string), res.ResourceID(paletteId))
 		}
 		if folderArgument != nil {
 			folder = folderArgument.(string)
@@ -88,7 +94,7 @@ func main() {
 
 		holder := provider.Provide(res.ResourceID(chunkID))
 		outFileName := fmt.Sprintf("%04X_%03d", int(chunkID), blockID)
-		exportFile(provider, holder, uint16(blockID), path.Join(folder, outFileName), raw, paletteFile, float32(framesPerSecond))
+		exportFile(provider, holder, uint16(blockID), path.Join(folder, outFileName), raw, palette, float32(framesPerSecond))
 	} else if arguments["import"].(bool) {
 		resourceFile := arguments["<resource-file>"].(string)
 		chunkID, _ := strconv.ParseUint(arguments["<chunk-id>"].(string), 0, 16)
@@ -106,7 +112,7 @@ func main() {
 }
 
 func exportFile(provider chunk.Provider, holder chunk.BlockHolder, blockID uint16,
-	outFileName string, raw bool, paletteFile string, framesPerSecond float32) {
+	outFileName string, raw bool, palette color.Palette, framesPerSecond float32) {
 	blockData := holder.BlockData(blockID)
 	contentType := holder.ContentType()
 	exportRaw := raw
@@ -118,13 +124,10 @@ func exportFile(provider chunk.Provider, holder chunk.BlockHolder, blockID uint1
 		} else if contentType == res.Media {
 			exportRaw = exportMedia(blockData, outFileName, framesPerSecond)
 		} else if contentType == res.Bitmap {
-			palette := loadPalette(paletteFile)
 			exportRaw = !convert.ToPng(outFileName+".png", blockData, palette)
 		} else if contentType == res.Geometry {
-			palette := loadPalette(paletteFile)
 			exportRaw = !convert.ToWavefrontObj(outFileName, blockData, palette)
 		} else if contentType == res.VideoClip {
-			palette := loadPalette(paletteFile)
 			exportRaw = exportVideoClip(provider, blockData, outFileName, framesPerSecond, palette)
 		} else {
 			exportRaw = true
@@ -135,18 +138,25 @@ func exportFile(provider chunk.Provider, holder chunk.BlockHolder, blockID uint1
 	}
 }
 
-func loadPalette(fileName string) (pal color.Palette) {
+func loadPalette(fileName string, paletteId res.ResourceID) (pal color.Palette) {
 	if len(fileName) > 0 {
 		inFile, _ := os.Open(fileName)
 		defer inFile.Close()
 		provider, _ := dos.NewChunkProvider(inFile)
 
-		ids := provider.IDs()
-		for _, id := range ids {
+		tryLoad := func(id res.ResourceID) {
 			blockHolder := provider.Provide(id)
 
-			if blockHolder.ContentType() == res.Palette && pal == nil {
+			if blockHolder != nil && blockHolder.ContentType() == res.Palette && pal == nil {
 				pal, _ = image.LoadPalette(bytes.NewReader(blockHolder.BlockData(0)))
+			}
+		}
+
+		tryLoad(paletteId)
+		if pal == nil {
+			ids := provider.IDs()
+			for _, id := range ids {
+				tryLoad(id)
 			}
 		}
 	}
@@ -179,6 +189,10 @@ func exportVideoClip(provider chunk.Provider, blockData []byte, fileBaseName str
 	reader := bytes.NewReader(blockData)
 	sequence := data.DefaultVideoClipSequence((len(blockData) - data.VideoClipSequenceBaseSize) / data.VideoClipSequenceEntrySize)
 	var err error
+	clipPalette := make([]color.Color, len(pal))
+
+	clipPalette[0] = color.NRGBA{R: 0, G: 0, B: 0, A: 0xFF}
+	copy(clipPalette[1:], pal[1:])
 
 	serial.MapData(sequence, serial.NewDecoder(reader))
 	{
@@ -195,7 +209,7 @@ func exportVideoClip(provider chunk.Provider, blockData []byte, fileBaseName str
 		framesData := provider.Provide(sequence.FramesID)
 
 		imageRect := goImage.Rect(0, 0, int(sequence.Width), int(sequence.Height))
-		img := goImage.NewPaletted(imageRect, pal)
+		img := goImage.NewPaletted(imageRect, clipPalette)
 		handler := newExportingMediaHandler(fileBaseName, mediaDuration, framesPerSecond, 0.0)
 		for frameId := uint16(0); frameId < framesData.BlockCount() && err == nil; frameId++ {
 			frameReader := bytes.NewReader(framesData.BlockData(frameId))
