@@ -199,7 +199,7 @@ func exportVideoClip(provider chunk.Provider, blockData []byte, fileBaseName str
 		times := make([]float32, 0)
 		mediaDuration := float32(0.0)
 		for _, entry := range sequence.Entries {
-			frameTime := float32(entry.Unknown0003[1]) + float32(entry.Unknown0003[0])/256.0
+			frameTime := float32(entry.FrameTime) / 1000.0
 			for i := 0; i < int(entry.LastFrame-entry.FirstFrame)+1; i++ {
 				times = append(times, mediaDuration)
 				mediaDuration += frameTime
