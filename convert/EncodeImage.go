@@ -8,15 +8,19 @@ import (
 )
 
 // EncodeImage takes a paletted image and encodes it as a block.
-func EncodeImage(img *goimage.Paletted, withPrivatePalette bool) []byte {
+func EncodeImage(img *goimage.Paletted, withPrivatePalette bool, compressed bool) []byte {
 	palette := img.Palette
+	imgType := image.UncompressedBitmap
 
 	if !withPrivatePalette {
 		palette = nil
 	}
+	if compressed {
+		imgType = image.CompressedBitmap
+	}
 	bmp := image.ToBitmap(img, palette)
 	buf := bytes.NewBuffer(nil)
-	image.Write(buf, bmp, image.CompressedBitmap, 0)
+	image.Write(buf, bmp, imgType, 0)
 
 	return buf.Bytes()
 }

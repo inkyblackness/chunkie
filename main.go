@@ -41,7 +41,7 @@ func usage() string {
 
 Usage:
   chunkie export <resource-file> <chunk-id> [--block=<block-id>] [--raw] [--pal=<palette-file>] [--pal-id=<palette-id>] [--fps=<framerate>] [<folder>]
-  chunkie import <resource-file> <chunk-id> [--block=<block-id>] [--data-type=<id>] <source-file>
+  chunkie import <resource-file> <chunk-id> [--block=<block-id>] [--data-type=<id>] [--compressed] <source-file>
   chunkie -h | --help
   chunkie --version
 
@@ -50,6 +50,7 @@ Options:
   <chunk-id>             The chunk identifier. Defaults to decimal, use "0x" as prefix for hexadecimal.
   --block=<block-id>     The block identifier. Defaults to decimal, use "0x" as prefix for hexadecimal. [default: 0]
   --raw                  With this flag, the chunk will be exported without conversion to a common file format.
+  --compressed           With this flag, imported bitmaps will be compressed.
   --pal=<palette-file>   For handling bitmaps & models, use this palette file to write color information
   --pal-id=<palette-id>  Optional palette chunk identifier. If not provided, uses first palette found in palette-file.
   --fps=<framerate>      The frames per second to emulate when exporting movies. 0 names files after timestamp. [default: 0]
@@ -100,6 +101,7 @@ func main() {
 		chunkID, _ := strconv.ParseUint(arguments["<chunk-id>"].(string), 0, 16)
 		blockID, _ := strconv.ParseUint(arguments["--block"].(string), 0, 16)
 		sourceFile := arguments["<source-file>"].(string)
+		compressed := arguments["--compressed"].(bool)
 		dataType := -1
 		dataTypeArgument := arguments["--data-type"]
 		if dataTypeArgument != nil {
@@ -107,7 +109,7 @@ func main() {
 			dataType = int(result)
 		}
 
-		importData(resourceFile, res.ResourceID(chunkID), uint16(blockID), dataType, sourceFile)
+		importData(resourceFile, res.ResourceID(chunkID), uint16(blockID), dataType, sourceFile, compressed)
 	}
 }
 
@@ -229,7 +231,7 @@ func exportVideoClip(provider chunk.Provider, blockData []byte, fileBaseName str
 	return
 }
 
-func importData(resourceFile string, chunkID res.ResourceID, blockID uint16, dataType int, sourceFile string) {
+func importData(resourceFile string, chunkID res.ResourceID, blockID uint16, dataType int, sourceFile string, compressed bool) {
 	buffer := serial.NewByteStore()
 	writer := dos.NewChunkConsumer(buffer)
 
@@ -245,7 +247,7 @@ func importData(resourceFile string, chunkID res.ResourceID, blockID uint16, dat
 			blocks := make([][]byte, blockCount)
 			for block := uint16(0); block < blockCount; block++ {
 				if id == chunkID && block == blockID {
-					blocks[block] = importFile(sourceFile, sourceChunk.ContentType())
+					blocks[block] = importFile(sourceFile, sourceChunk.ContentType(), compressed)
 				} else {
 					blocks[block] = sourceChunk.BlockData(block)
 				}
@@ -263,7 +265,7 @@ func importData(resourceFile string, chunkID res.ResourceID, blockID uint16, dat
 	}
 }
 
-func importFile(sourceFile string, dataType res.DataTypeID) (data []byte) {
+func importFile(sourceFile string, dataType res.DataTypeID, compressed bool) (data []byte) {
 	extension := path.Ext(sourceFile)
 	switch extension {
 	case ".wav":
@@ -278,7 +280,7 @@ func importFile(sourceFile string, dataType res.DataTypeID) (data []byte) {
 	case ".png":
 		{
 			if dataType == res.Bitmap {
-				data = convert.FromPng(sourceFile, false)
+				data = convert.FromPng(sourceFile, false, compressed)
 			}
 		}
 	default:
