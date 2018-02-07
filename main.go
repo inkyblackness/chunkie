@@ -145,30 +145,33 @@ func main() {
 
 func exportFile(provider chunk.Provider, holder chunk.BlockHolder, blockID uint16,
 	outFileName string, raw bool, palette color.Palette, framesPerSecond float32) {
-	blockData := holder.BlockData(blockID)
-	contentType := holder.ContentType()
-	exportRaw := raw
+	// Some chunks have zero blocks (gamescr.res)
+	if holder.BlockCount() > 0 {
+		blockData := holder.BlockData(blockID)
+		contentType := holder.ContentType()
+		exportRaw := raw
 
-	if !exportRaw {
-		if contentType == res.Sound {
-			soundData, _ := audio.DecodeSoundChunk(blockData)
-			wav.ExportToWav(outFileName+".wav", soundData)
-		} else if contentType == res.Media {
-			exportRaw = exportMedia(blockData, outFileName, framesPerSecond)
-		} else if contentType == res.Bitmap {
-			exportRaw = !convert.ToPng(outFileName+".png", blockData, palette)
-		} else if contentType == res.Geometry {
-			exportRaw = !convert.ToWavefrontObj(outFileName, blockData, palette)
-		} else if contentType == res.VideoClip {
-			exportRaw = exportVideoClip(provider, blockData, outFileName, framesPerSecond, palette)
-		} else if contentType == res.Text {
-			exportRaw = !convert.ToTxt(outFileName+".xml", holder)
-		} else {
-			exportRaw = true
+		if !exportRaw {
+			if contentType == res.Sound {
+				soundData, _ := audio.DecodeSoundChunk(blockData)
+				wav.ExportToWav(outFileName+".wav", soundData)
+			} else if contentType == res.Media {
+				exportRaw = exportMedia(blockData, outFileName, framesPerSecond)
+			} else if contentType == res.Bitmap {
+				exportRaw = !convert.ToPng(outFileName+".png", blockData, palette)
+			} else if contentType == res.Geometry {
+				exportRaw = !convert.ToWavefrontObj(outFileName, blockData, palette)
+			} else if contentType == res.VideoClip {
+				exportRaw = exportVideoClip(provider, blockData, outFileName, framesPerSecond, palette)
+			} else if contentType == res.Text {
+				exportRaw = !convert.ToTxt(outFileName+".xml", holder)
+			} else {
+				exportRaw = true
+			}
 		}
-	}
-	if exportRaw {
-		ioutil.WriteFile(outFileName+".bin", blockData, os.FileMode(0644))
+		if exportRaw {
+			ioutil.WriteFile(outFileName+".bin", blockData, os.FileMode(0644))
+		}
 	}
 }
 
