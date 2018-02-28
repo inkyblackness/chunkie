@@ -29,7 +29,7 @@ import (
 
 const (
 	// Version contains the current version number
-	Version = "1.0.0"
+	Version = "1.0.1"
 	// Name is the name of the application
 	Name = "InkyBlackness Chunkie"
 	// Title contains a combined string of name and version
